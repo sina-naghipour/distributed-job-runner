@@ -5,6 +5,7 @@ import swaggerUi from 'swagger-ui-express';
 import { Logger } from '@djr/shared';
 import { MemoryJobStore } from './store/memory.js';
 import { AgentGateway } from './ws/gateway.js';
+import { OfflineJobQueue } from './queue/offline-queue.js';
 import { createJobRouter } from './api/routes.js';
 import { swaggerSpec } from './api/openapi.js';
 
@@ -21,7 +22,17 @@ const httpServer = createServer(app);
 const wss = new WebSocketServer({ server: httpServer, path: '/ws/agent' });
 
 const store = new MemoryJobStore();
-const gateway = new AgentGateway(wss, store);
+const offlineQueue = new OfflineJobQueue((jobId, agentId) => {
+  logger.warn(`Job ${jobId} timed out in queue for agent ${agentId}`);
+  store.updateJobState(jobId, 'TIMED_OUT');
+  store.updateJobResult(jobId, {
+    jobId,
+    exitCode: 124,
+    error: `Job timed out while waiting for agent ${agentId} to come online`,
+  });
+});
+
+const gateway = new AgentGateway(wss, store, offlineQueue);
 
 // Health check
 app.get('/health', (_req, res) => {
@@ -29,7 +40,7 @@ app.get('/health', (_req, res) => {
 });
 
 // Mount Job API
-app.use('/api', createJobRouter(store, gateway));
+app.use('/api', createJobRouter(store, gateway, offlineQueue));
 
 httpServer.listen(port, () => {
   logger.info(`Control Plane HTTP & WS server listening on port ${port}`);

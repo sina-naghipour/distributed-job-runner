@@ -30,28 +30,29 @@ Designed to address distributed communication, out-of-order state transitions, f
 ```
                      Client (User / CLI)
                               │
-               POST /api/jobs │ (HTTP Asynchronous)
+               POST /api/jobs │ (Targeted by agentId)
                               ▼
                   ┌───────────────────────┐
                   │     Control Plane     │
-                  │  (REST API + Gateway) │
-                  └───────────┬───────────┘
-                              │
-                              │ WebSocket Reverse Link
-                              │ (DISPATCH_JOB)
-                              ▼
-                  ┌───────────────────────┐
-                  │      Agent Node       │
-                  │   (djr-agent-mvp)     │
-                  └───────────┬───────────┘
-                              │
-                              │ /var/run/docker.sock
-                              │ (Spawns Sibling Container)
-                              ▼
-                  ┌───────────────────────┐
-                  │  Worker Container     │
-                  │  (alpine / python)    │
-                  └───────────────────────┘
+                  │  (REST API + Gateway  │
+                  │   + OfflineJobQueue)  │
+                  └───────┬───────┬───────┘
+                          │       │
+            agent-alpha   │       │ agent-beta
+            WebSocket     │       │ WebSocket
+                          ▼       ▼
+                  ┌───────────┐┌───────────┐
+                  │   Agent   ││   Agent   │
+                  │   Alpha   ││   Beta    │
+                  └─────┬─────┘└─────┬─────┘
+                        │            │
+            /var/run/   │            │ /var/run/
+            docker.sock │            │ docker.sock
+                        ▼            ▼
+                  ┌───────────┐┌───────────┐
+                  │ Container ││ Container │
+                  │  Worker   ││  Worker   │
+                  └───────────┘└───────────┘
 ```
 
 ### End-to-End Execution Flow (Mermaid Diagram)
