@@ -204,8 +204,33 @@ Formal design documentation stored in [`docs/adr/`](file:///d:/part/internship/t
 | **Stage 1 (MVP)** | `stage-1-mvp` | **Completed**: End-to-end containerized execution, reverse WebSocket gateway, REST API, Swagger UI, isolated sibling containers. |
 | **Stage 2** | `stage-2-multi-agent-routing` | **Completed**: Multi-agent pool (`agent-alpha`, `agent-beta`), targeted routing, offline queueing with auto-drain. |
 | **Stage 3** | `stage-3-logs` | **Completed**: Live SSE log streaming (`GET /api/jobs/:id/logs/stream`), viewer disconnect resilience, durable final log disk artifacts. |
-| **Stage 4** | `stage-4-reliability` | **Completed**: Idempotent submissions via `idempotencyKey`, state machine transition guards, orphan container crash reconciliation. |
-| **Stage 5** | `stage-5-observability-demo` | Structured logging, trace IDs, automated demo scripts. |
+| **Stage 4** | `stage-4-reliability` | **Completed**: Idempotent submissions via `idempotencyKey`, state machine transition guards, orphan container crash reconciliation, SOLID refactoring. |
+| **Stage 5** | `stage-5-observability-demo` | **Completed**: Structured JSON logging, automated end-to-end demo scripts (`demo.ps1` & `demo.sh`) validating all 6 failure & execution scenarios. |
+
+---
+
+## 🧪 Automated Demo & Verification Script
+
+An automated suite is provided to exercise all happy paths, failure models, and recovery behaviors in seconds:
+
+### Windows (PowerShell):
+```powershell
+./demo.ps1
+```
+
+### Linux / macOS (Bash):
+```bash
+chmod +x ./demo.sh
+./demo.sh
+```
+
+### What the Demo Verifies:
+1. **Multi-Agent Discovery**: Detects both `agent-alpha` and `agent-beta` active on the network.
+2. **Targeted Routing**: Dispatches a command exclusively to `agent-alpha` and verifies execution.
+3. **Error Handling**: Dispatches a command that exits with code `55` to `agent-beta` and verifies graceful transition to `FAILED`.
+4. **Idempotency Guard**: Submits two requests with the identical `idempotencyKey` and verifies deduplication.
+5. **Offline Queueing & Auto-Drain**: Stops `agent-beta`, queues a job, restarts `agent-beta`, and verifies automatic execution upon reconnection.
+6. **Durable Artifacts**: Verifies that final logs are written to disk at `./data/logs/<jobId>.log`, surviving container lifecycle termination.
 
 ---
 
