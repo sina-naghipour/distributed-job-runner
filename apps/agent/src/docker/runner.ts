@@ -289,4 +289,36 @@ export class DockerRunner {
       },
     });
   }
+
+  /**
+   * Reconciles and cleans up orphaned containers left over from prior agent crashes or restarts.
+   *
+   * @param agentId - The agent ID to reconcile containers for
+   * @returns Count of cleaned containers
+   */
+  async cleanupOrphanedContainers(agentId: string): Promise<number> {
+    const orphans = await this.listOrphanedContainers(agentId);
+    if (orphans.length === 0) return 0;
+
+    this.logger.warn(`Found ${orphans.length} orphaned worker containers from previous execution. Initiating cleanup...`, {
+      agentId,
+      count: orphans.length,
+    });
+
+    let cleaned = 0;
+    for (const info of orphans) {
+      try {
+        const container = this.docker.getContainer(info.Id);
+        await container.remove({ force: true });
+        cleaned++;
+        this.logger.info(`Reconciled and removed orphaned container ${info.Id.substring(0, 12)}`, {
+          containerId: info.Id,
+        });
+      } catch (err: unknown) {
+        const error = err as Error;
+        this.logger.error(`Failed to remove orphan container ${info.Id}`, { error: error.message });
+      }
+    }
+    return cleaned;
+  }
 }

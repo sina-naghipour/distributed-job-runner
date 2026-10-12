@@ -49,7 +49,7 @@ export class AgentSupervisor {
   }
 
   /**
-   * Bootstraps the agent: verifies Docker Engine availability and initiates outbound connection.
+   * Bootstraps the agent: verifies Docker Engine availability, reconciles orphans, and initiates outbound connection.
    */
   async start(): Promise<void> {
     this.isRunning = true;
@@ -57,6 +57,12 @@ export class AgentSupervisor {
 
     const dockerVersion = await this.dockerRunner.verifyDockerConnection();
     this.logger.info(`Verified Docker Engine version: ${dockerVersion}`);
+
+    // Reconcile and clean up any leftover containers from prior crashes
+    const cleaned = await this.dockerRunner.cleanupOrphanedContainers(this.config.agentId);
+    if (cleaned > 0) {
+      this.logger.info(`Reconciliation complete: cleaned ${cleaned} leftover containers`);
+    }
 
     this.connect();
   }

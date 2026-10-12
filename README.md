@@ -204,7 +204,7 @@ Formal design documentation stored in [`docs/adr/`](file:///d:/part/internship/t
 | **Stage 1 (MVP)** | `stage-1-mvp` | **Completed**: End-to-end containerized execution, reverse WebSocket gateway, REST API, Swagger UI, isolated sibling containers. |
 | **Stage 2** | `stage-2-multi-agent-routing` | **Completed**: Multi-agent pool (`agent-alpha`, `agent-beta`), targeted routing, offline queueing with auto-drain. |
 | **Stage 3** | `stage-3-logs` | **Completed**: Live SSE log streaming (`GET /api/jobs/:id/logs/stream`), viewer disconnect resilience, durable final log disk artifacts. |
-| **Stage 4** | `stage-4-reliability` | Crash recovery, network drops mid-job, reconciliation of orphaned containers, idempotent state transitions. |
+| **Stage 4** | `stage-4-reliability` | **Completed**: Idempotent submissions via `idempotencyKey`, state machine transition guards, orphan container crash reconciliation. |
 | **Stage 5** | `stage-5-observability-demo` | Structured logging, trace IDs, automated demo scripts. |
 
 ---

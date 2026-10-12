@@ -1,4 +1,4 @@
-import { JobExecutionRequest, JobResult, JobState, LogChunk } from '@djr/shared';
+import { JobExecutionRequest, JobResult, JobState, LogChunk, isValidStateTransition, isTerminalState } from '@djr/shared';
 
 /**
  * Internal record stored in memory representing a Job and its lifecycle.
@@ -89,7 +89,12 @@ export class MemoryJobStore {
   }
 
   /**
-   * Updates the state machine state of an existing job.
+   * Updates the state machine state of an existing job safely.
+   *
+   * Enforces transition rules:
+   * - Duplicate transition to identical state is accepted idempotently.
+   * - Transitions out of terminal states (SUCCEEDED, FAILED, etc.) are safely ignored.
+   * - Illegal out-of-order transitions are rejected.
    *
    * @param jobId - Unique job ID
    * @param state - New JobState (e.g., 'DISPATCHED', 'RUNNING', 'SUCCEEDED')
@@ -97,6 +102,20 @@ export class MemoryJobStore {
   updateJobState(jobId: string, state: JobState): JobRecord | undefined {
     const record = this.jobs.get(jobId);
     if (!record) return undefined;
+
+    // Idempotent no-op
+    if (record.state === state) return record;
+
+    // Guard against late transitions once terminal
+    if (isTerminalState(record.state)) {
+      return record;
+    }
+
+    // Guard against invalid state transition
+    if (!isValidStateTransition(record.state, state)) {
+      return record;
+    }
+
     record.state = state;
     record.updatedAt = new Date().toISOString();
     return record;
