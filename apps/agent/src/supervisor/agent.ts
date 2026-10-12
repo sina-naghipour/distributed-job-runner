@@ -59,7 +59,7 @@ export class AgentSupervisor {
     this.logger.info(`Verified Docker Engine version: ${dockerVersion}`);
 
     // Reconcile and clean up any leftover containers from prior crashes
-    const cleaned = await this.dockerRunner.cleanupOrphanedContainers(this.config.agentId);
+    const cleaned = await this.dockerRunner.cleanupOrphanedContainers();
     if (cleaned > 0) {
       this.logger.info(`Reconciliation complete: cleaned ${cleaned} leftover containers`);
     }
