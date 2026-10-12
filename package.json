@@ -1,0 +1,20 @@
+{
+  "name": "distributed-job-runner",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Distributed job execution engine across containerized agents",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "build": "npm run --workspaces --if-present build",
+    "test": "npm run --workspaces --if-present test",
+    "agent:dev": "npm run --workspace=@djr/agent dev",
+    "control-plane:dev": "npm run --workspace=@djr/control-plane dev"
+  },
+  "devDependencies": {
+    "typescript": "^5.5.4",
+    "@types/node": "^20.14.10"
+  }
+}
