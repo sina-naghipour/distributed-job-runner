@@ -7,10 +7,26 @@ import {
 } from '@djr/shared';
 import { MemoryJobStore } from '../store/memory.js';
 
+/**
+ * AgentGateway coordinates bidirectional WebSocket communication between
+ * the Control Plane and remote Agents operating behind NATs/firewalls.
+ *
+ * Key duties:
+ * - Manages agent socket pools indexed by `agentId`.
+ * - Handles registration handshakes (`AGENT_HELLO`) and heartbeats (`AGENT_HEARTBEAT`).
+ * - Dispatches jobs (`DISPATCH_JOB`) directly over the established socket.
+ * - Ingests state transitions, raw log chunks, and execution completions.
+ */
 export class AgentGateway {
   private activeSockets = new Map<string, WebSocket>();
   private logger = new Logger({ service: 'agent-gateway' });
 
+  /**
+   * Initializes the gateway and attaches event listeners to the WebSocketServer.
+   *
+   * @param wss - WebSocketServer instance mounted on HTTP server path `/ws/agent`
+   * @param store - In-memory or database job store
+   */
   constructor(
     private wss: WebSocketServer,
     private store: MemoryJobStore
@@ -18,6 +34,9 @@ export class AgentGateway {
     this.init();
   }
 
+  /**
+   * Attaches connection listeners to accept incoming agent reverse connections.
+   */
   private init(): void {
     this.wss.on('connection', (ws: WebSocket) => {
       let registeredAgentId: string | null = null;
@@ -47,6 +66,14 @@ export class AgentGateway {
     });
   }
 
+  /**
+   * Processes typed incoming messages from an agent.
+   *
+   * @param ws - Active agent WebSocket instance
+   * @param msg - AgentToControlMessage union
+   * @param currentAgentId - Current registered agent ID for this socket session
+   * @returns Updated agentId
+   */
   private handleAgentMessage(
     ws: WebSocket,
     msg: AgentToControlMessage,
@@ -111,6 +138,12 @@ export class AgentGateway {
     }
   }
 
+  /**
+   * Dispatches a job execution request to the targeted agent's WebSocket connection.
+   *
+   * @param req - Job execution request payload
+   * @returns `true` if successfully dispatched over active socket; `false` if agent is offline.
+   */
   dispatchJob(req: JobExecutionRequest): boolean {
     const ws = this.activeSockets.get(req.targetAgentId);
     if (!ws || ws.readyState !== WebSocket.OPEN) {
@@ -135,6 +168,11 @@ export class AgentGateway {
     return true;
   }
 
+  /**
+   * Checks whether an agent is currently connected and ready to accept jobs.
+   *
+   * @param agentId - Unique agent identifier
+   */
   isAgentConnected(agentId: string): boolean {
     const ws = this.activeSockets.get(agentId);
     return !!ws && ws.readyState === WebSocket.OPEN;

@@ -4,6 +4,19 @@ import { JobExecutionRequest, Logger } from '@djr/shared';
 import { MemoryJobStore } from '../store/memory.js';
 import { AgentGateway } from '../ws/gateway.js';
 
+/**
+ * Creates and configures the Express router for Job and Agent management.
+ *
+ * Endpoints:
+ * - `POST /jobs`      : Submit a new asynchronous job (idempotent if idempotencyKey supplied).
+ * - `GET  /jobs/:id`  : Retrieve job status, state machine phase, and exit results.
+ * - `GET  /jobs/:id/logs` : Retrieve captured stdout/stderr log stream.
+ * - `GET  /jobs`      : List all jobs.
+ * - `GET  /agents`    : List all connected agents and heartbeat statistics.
+ *
+ * @param store - Job storage instance
+ * @param gateway - Agent communication gateway
+ */
 export function createJobRouter(store: MemoryJobStore, gateway: AgentGateway): Router {
   const router = Router();
   const logger = new Logger({ service: 'job-api' });
@@ -33,7 +46,7 @@ export function createJobRouter(store: MemoryJobStore, gateway: AgentGateway): R
       });
     }
 
-    // Check idempotencyKey
+    // Check idempotencyKey to prevent duplicate work
     if (idempotencyKey) {
       const existing = store.findJobByIdempotencyKey(idempotencyKey);
       if (existing) {

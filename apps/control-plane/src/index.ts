@@ -1,16 +1,21 @@
 import express from 'express';
 import { createServer } from 'node:http';
 import { WebSocketServer } from 'ws';
+import swaggerUi from 'swagger-ui-express';
 import { Logger } from '@djr/shared';
 import { MemoryJobStore } from './store/memory.js';
 import { AgentGateway } from './ws/gateway.js';
 import { createJobRouter } from './api/routes.js';
+import { swaggerSpec } from './api/openapi.js';
 
 const port = process.env.PORT ? parseInt(process.env.PORT, 10) : 4000;
 const logger = new Logger({ service: 'control-plane' });
 
 const app = express();
 app.use(express.json());
+
+// Swagger API Documentation
+app.use('/api/docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec));
 
 const httpServer = createServer(app);
 const wss = new WebSocketServer({ server: httpServer, path: '/ws/agent' });
