@@ -8,6 +8,8 @@ services:
       - "4000:4000"
     environment:
       - PORT=4000
+    volumes:
+      - ./data/logs:/app/data/logs
     networks:
       - djr-net
 

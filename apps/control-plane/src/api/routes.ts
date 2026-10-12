@@ -4,26 +4,33 @@ import { JobExecutionRequest, Logger } from '@djr/shared';
 import { MemoryJobStore } from '../store/memory.js';
 import { AgentGateway } from '../ws/gateway.js';
 import { OfflineJobQueue } from '../queue/offline-queue.js';
+import { LogStreamBroadcaster } from '../logs/stream-broadcaster.js';
+import { LogArtifactManager } from '../logs/artifact-manager.js';
 
 /**
  * Creates and configures the Express router for Job and Agent management.
  *
  * Endpoints:
- * - `POST /jobs`      : Submit a new asynchronous job (idempotent if idempotencyKey supplied).
- * - `GET  /jobs/:id`  : Retrieve job status, state machine phase, and exit results.
- * - `GET  /jobs/:id/logs` : Retrieve captured stdout/stderr log stream.
- * - `GET  /jobs`      : List all jobs.
- * - `GET  /agents`    : List all connected agents and heartbeat statistics.
- * - `GET  /queue`     : View offline queues per agent.
+ * - `POST /jobs`          : Submit a new asynchronous job (idempotent if idempotencyKey supplied).
+ * - `GET  /jobs/:id`      : Retrieve job status, state machine phase, and exit results.
+ * - `GET  /jobs/:id/logs` : Retrieve captured stdout/stderr log stream (from memory or durable artifact).
+ * - `GET  /jobs/:id/logs/stream` : Live Server-Sent Events (SSE) log stream for real-time observation.
+ * - `GET  /jobs`          : List all jobs.
+ * - `GET  /agents`        : List all connected agents and heartbeat statistics.
+ * - `GET  /queue`         : View offline queues per agent.
  *
  * @param store - Job storage instance
  * @param gateway - Agent communication gateway
  * @param queue - Offline job queue
+ * @param broadcaster - Live log stream manager
+ * @param artifactManager - Final log artifact manager
  */
 export function createJobRouter(
   store: MemoryJobStore,
   gateway: AgentGateway,
-  queue: OfflineJobQueue
+  queue: OfflineJobQueue,
+  broadcaster: LogStreamBroadcaster,
+  artifactManager: LogArtifactManager
 ): Router {
   const router = Router();
   const logger = new Logger({ service: 'job-api' });
@@ -123,12 +130,22 @@ export function createJobRouter(
     });
   });
 
-  // 3. Get Job Logs
-  router.get('/jobs/:id/logs', (req, res) => {
+  // 3. Get Job Logs (checks memory store and durable file artifact fallback)
+  router.get('/jobs/:id/logs', async (req, res) => {
     const job = store.getJob(req.params.id);
     if (!job) {
+      // Check if preserved on disk as a final artifact
+      const artifact = await artifactManager.readFinalLog(req.params.id);
+      if (artifact !== null) {
+        return res.json({
+          jobId: req.params.id,
+          source: 'artifact',
+          logs: artifact,
+        });
+      }
       return res.status(404).json({ error: `Job ${req.params.id} not found` });
     }
+
     const fullLog = job.logs
       .sort((a, b) => a.sequence - b.sequence)
       .map((l) => l.chunk)
@@ -141,6 +158,16 @@ export function createJobRouter(
       logs: fullLog,
       rawChunks: job.logs,
     });
+  });
+
+  // 3b. Live SSE Log Stream
+  router.get('/jobs/:id/logs/stream', (req, res) => {
+    const job = store.getJob(req.params.id);
+    if (!job) {
+      return res.status(404).json({ error: `Job ${req.params.id} not found` });
+    }
+
+    broadcaster.subscribe(req.params.id, res, job.logs);
   });
 
   // 4. List all Jobs

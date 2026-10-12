@@ -7,6 +7,8 @@ import {
 } from '@djr/shared';
 import { MemoryJobStore } from '../store/memory.js';
 import { OfflineJobQueue } from '../queue/offline-queue.js';
+import { LogStreamBroadcaster } from '../logs/stream-broadcaster.js';
+import { LogArtifactManager } from '../logs/artifact-manager.js';
 
 /**
  * AgentGateway coordinates bidirectional WebSocket communication between
@@ -17,7 +19,8 @@ import { OfflineJobQueue } from '../queue/offline-queue.js';
  * - Handles registration handshakes (`AGENT_HELLO`) and heartbeats (`AGENT_HEARTBEAT`).
  * - Dispatches jobs (`DISPATCH_JOB`) directly over the established socket.
  * - Integrates with `OfflineJobQueue` to auto-dispatch jobs queued while agent was disconnected.
- * - Ingests state transitions, raw log chunks, and execution completions.
+ * - Broadcasts real-time live logs via `LogStreamBroadcaster` (SSE).
+ * - Persists durable final log artifacts via `LogArtifactManager`.
  */
 export class AgentGateway {
   private activeSockets = new Map<string, WebSocket>();
@@ -29,11 +32,15 @@ export class AgentGateway {
    * @param wss - WebSocketServer instance mounted on HTTP server path `/ws/agent`
    * @param store - In-memory or database job store
    * @param offlineQueue - Queue managing jobs for offline agents
+   * @param broadcaster - Live log stream manager
+   * @param artifactManager - Final log persistence manager
    */
   constructor(
     private wss: WebSocketServer,
     private store: MemoryJobStore,
-    private offlineQueue: OfflineJobQueue
+    private offlineQueue: OfflineJobQueue,
+    private broadcaster: LogStreamBroadcaster,
+    private artifactManager: LogArtifactManager
   ) {
     this.init();
   }
@@ -137,6 +144,8 @@ export class AgentGateway {
 
       case 'JOB_LOG_CHUNK': {
         this.store.appendLogChunk(msg.payload);
+        // Relay live chunk to all active SSE subscribers
+        this.broadcaster.broadcastChunk(msg.payload);
         return currentAgentId;
       }
 
@@ -147,6 +156,18 @@ export class AgentGateway {
           exitCode: result.exitCode,
         });
         this.store.updateJobResult(jobId, result);
+
+        // Notify and close live SSE viewers
+        this.broadcaster.broadcastComplete(jobId, result.exitCode);
+
+        // Asynchronously persist final log artifact to disk
+        const jobRecord = this.store.getJob(jobId);
+        if (jobRecord) {
+          this.artifactManager.saveFinalLog(jobId, jobRecord.logs).catch((err) => {
+            this.logger.error(`Failed to write final log artifact for ${jobId}`, { error: err.message });
+          });
+        }
+
         return currentAgentId;
       }
 
