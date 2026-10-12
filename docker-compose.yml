@@ -1,0 +1,33 @@
+services:
+  control-plane:
+    build:
+      context: .
+      dockerfile: apps/control-plane/Dockerfile
+    container_name: djr-control-plane
+    ports:
+      - "4000:4000"
+    environment:
+      - PORT=4000
+    networks:
+      - djr-net
+
+  agent:
+    build:
+      context: .
+      dockerfile: apps/agent/Dockerfile
+    container_name: djr-agent-mvp
+    depends_on:
+      - control-plane
+    environment:
+      - AGENT_ID=agent-mvp-01
+      - CONTROL_PLANE_WS_URL=ws://control-plane:4000/ws/agent
+      - HEARTBEAT_INTERVAL_MS=5000
+    volumes:
+      # Mount host Docker socket so the agent can spawn sibling job containers
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks:
+      - djr-net
+
+networks:
+  djr-net:
+    driver: bridge
