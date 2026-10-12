@@ -6,6 +6,8 @@ import { Logger } from '@djr/shared';
 import { MemoryJobStore } from './store/memory.js';
 import { AgentGateway } from './ws/gateway.js';
 import { OfflineJobQueue } from './queue/offline-queue.js';
+import { LogStreamBroadcaster } from './logs/stream-broadcaster.js';
+import { LogArtifactManager } from './logs/artifact-manager.js';
 import { createJobRouter } from './api/routes.js';
 import { swaggerSpec } from './api/openapi.js';
 
@@ -32,7 +34,10 @@ const offlineQueue = new OfflineJobQueue((jobId, agentId) => {
   });
 });
 
-const gateway = new AgentGateway(wss, store, offlineQueue);
+const broadcaster = new LogStreamBroadcaster();
+const artifactManager = new LogArtifactManager();
+
+const gateway = new AgentGateway(wss, store, offlineQueue, broadcaster, artifactManager);
 
 // Health check
 app.get('/health', (_req, res) => {
@@ -40,7 +45,7 @@ app.get('/health', (_req, res) => {
 });
 
 // Mount Job API
-app.use('/api', createJobRouter(store, gateway, offlineQueue));
+app.use('/api', createJobRouter(store, gateway, offlineQueue, broadcaster, artifactManager));
 
 httpServer.listen(port, () => {
   logger.info(`Control Plane HTTP & WS server listening on port ${port}`);
