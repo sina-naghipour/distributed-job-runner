@@ -6,6 +6,7 @@ import {
   Logger,
 } from '@djr/shared';
 import { MemoryJobStore } from '../store/memory.js';
+import { OfflineJobQueue } from '../queue/offline-queue.js';
 
 /**
  * AgentGateway coordinates bidirectional WebSocket communication between
@@ -15,6 +16,7 @@ import { MemoryJobStore } from '../store/memory.js';
  * - Manages agent socket pools indexed by `agentId`.
  * - Handles registration handshakes (`AGENT_HELLO`) and heartbeats (`AGENT_HEARTBEAT`).
  * - Dispatches jobs (`DISPATCH_JOB`) directly over the established socket.
+ * - Integrates with `OfflineJobQueue` to auto-dispatch jobs queued while agent was disconnected.
  * - Ingests state transitions, raw log chunks, and execution completions.
  */
 export class AgentGateway {
@@ -26,10 +28,12 @@ export class AgentGateway {
    *
    * @param wss - WebSocketServer instance mounted on HTTP server path `/ws/agent`
    * @param store - In-memory or database job store
+   * @param offlineQueue - Queue managing jobs for offline agents
    */
   constructor(
     private wss: WebSocketServer,
-    private store: MemoryJobStore
+    private store: MemoryJobStore,
+    private offlineQueue: OfflineJobQueue
   ) {
     this.init();
   }
@@ -102,6 +106,19 @@ export class AgentGateway {
           },
         };
         ws.send(JSON.stringify(ack));
+
+        // Auto-drain pending jobs queued while this agent was offline
+        const queuedJobs = this.offlineQueue.drain(agentId);
+        if (queuedJobs.length > 0) {
+          this.logger.info(`Auto-dispatching ${queuedJobs.length} queued jobs to reconnected agent ${agentId}`, {
+            agentId,
+            count: queuedJobs.length,
+          });
+          for (const req of queuedJobs) {
+            this.dispatchJob(req);
+          }
+        }
+
         return agentId;
       }
 

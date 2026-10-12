@@ -11,19 +11,36 @@ services:
     networks:
       - djr-net
 
-  agent:
+  # Agent Alpha: Dedicated execution worker node
+  agent-alpha:
     build:
       context: .
       dockerfile: apps/agent/Dockerfile
-    container_name: djr-agent-mvp
+    container_name: djr-agent-alpha
     depends_on:
       - control-plane
     environment:
-      - AGENT_ID=agent-mvp-01
+      - AGENT_ID=agent-alpha
       - CONTROL_PLANE_WS_URL=ws://control-plane:4000/ws/agent
       - HEARTBEAT_INTERVAL_MS=5000
     volumes:
-      # Mount host Docker socket so the agent can spawn sibling job containers
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks:
+      - djr-net
+
+  # Agent Beta: Second independent execution worker node
+  agent-beta:
+    build:
+      context: .
+      dockerfile: apps/agent/Dockerfile
+    container_name: djr-agent-beta
+    depends_on:
+      - control-plane
+    environment:
+      - AGENT_ID=agent-beta
+      - CONTROL_PLANE_WS_URL=ws://control-plane:4000/ws/agent
+      - HEARTBEAT_INTERVAL_MS=5000
+    volumes:
       - /var/run/docker.sock:/var/run/docker.sock
     networks:
       - djr-net

@@ -3,6 +3,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { JobExecutionRequest, Logger } from '@djr/shared';
 import { MemoryJobStore } from '../store/memory.js';
 import { AgentGateway } from '../ws/gateway.js';
+import { OfflineJobQueue } from '../queue/offline-queue.js';
 
 /**
  * Creates and configures the Express router for Job and Agent management.
@@ -13,11 +14,17 @@ import { AgentGateway } from '../ws/gateway.js';
  * - `GET  /jobs/:id/logs` : Retrieve captured stdout/stderr log stream.
  * - `GET  /jobs`      : List all jobs.
  * - `GET  /agents`    : List all connected agents and heartbeat statistics.
+ * - `GET  /queue`     : View offline queues per agent.
  *
  * @param store - Job storage instance
  * @param gateway - Agent communication gateway
+ * @param queue - Offline job queue
  */
-export function createJobRouter(store: MemoryJobStore, gateway: AgentGateway): Router {
+export function createJobRouter(
+  store: MemoryJobStore,
+  gateway: AgentGateway,
+  queue: OfflineJobQueue
+): Router {
   const router = Router();
   const logger = new Logger({ service: 'job-api' });
 
@@ -81,10 +88,11 @@ export function createJobRouter(store: MemoryJobStore, gateway: AgentGateway): R
     // Attempt immediate dispatch if agent is connected
     const dispatched = gateway.dispatchJob(jobRequest);
     if (!dispatched) {
-      logger.warn(`Agent ${targetAgentId} is offline. Job ${jobId} remains PENDING in queue`, {
+      logger.warn(`Agent ${targetAgentId} is offline. Buffering Job ${jobId} in OfflineJobQueue`, {
         jobId,
         targetAgentId,
       });
+      queue.enqueue(jobRequest);
     }
 
     // Asynchronous acceptance: return 202 Accepted with jobId immediately
@@ -92,7 +100,9 @@ export function createJobRouter(store: MemoryJobStore, gateway: AgentGateway): R
       jobId,
       state: store.getJob(jobId)?.state || record.state,
       targetAgentId,
-      message: dispatched ? 'Dispatched to agent' : 'Queued (Agent currently offline)',
+      message: dispatched
+        ? 'Dispatched to agent'
+        : `Agent ${targetAgentId} is currently offline. Job queued and will execute automatically upon reconnect.`,
     });
   });
 
@@ -149,6 +159,11 @@ export function createJobRouter(store: MemoryJobStore, gateway: AgentGateway): R
   // 5. List Connected Agents
   router.get('/agents', (_req, res) => {
     return res.json({ agents: store.listAgents() });
+  });
+
+  // 6. View Offline Queue Status
+  router.get('/queue', (_req, res) => {
+    return res.json({ queues: queue.getStats() });
   });
 
   return router;
